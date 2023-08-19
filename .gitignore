@@ -5,3 +5,4 @@ MeetingApp/settings.py
 lib
 
 /pyvenv.cfg
+/.env
