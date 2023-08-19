@@ -1,0 +1,7 @@
+# created by virtualenv automatically
+.idea
+bin
+MeetingApp/settings.py
+lib
+
+/pyvenv.cfg
