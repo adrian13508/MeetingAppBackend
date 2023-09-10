@@ -7,6 +7,6 @@ lib
 .env
 __pycache__
 db.sqlite3
-MeetingAppVenvs
+MeetingAppVenv
 MeetingAppEnv
 
