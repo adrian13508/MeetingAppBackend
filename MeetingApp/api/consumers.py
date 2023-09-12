@@ -1,27 +1,21 @@
 import json
-
 from channels.generic.websocket import AsyncWebsocketConsumer
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from asgiref.sync import async_to_sync
-from channels.generic.websocket import WebsocketConsumer
-
+from channels.db import database_sync_to_async
 
 class VideoConsumer(AsyncWebsocketConsumer):
-
     async def connect(self):
-        self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
-        self.room_group_name = f"room_{self.room_name}"
+        await self.accept()
+        self.room_name = self.scope['url_route']['kwargs']['room_name']
+        self.room_group_name = f'video_{self.room_name}'
 
-        # Join the room group
+        # Join the room
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
 
-        await self.accept()
-
     async def disconnect(self, close_code):
-        # Leave the room group
+        # Leave the room
         await self.channel_layer.group_discard(
             self.room_group_name,
             self.channel_name
@@ -29,100 +23,39 @@ class VideoConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-        message_type = data.get("type")
+        if data.get('signalData'):
+            # Handle signaling data (SDP or ICE candidates)
+            signal_data = data['signalData']
+            await self.send_signal(signal_data)
 
-        if message_type == "offer":
-            await self.send_offer(data)
-        elif message_type == "answer":
-            await self.send_answer(data)
-        elif message_type == "candidate":
-            await self.send_candidate(data)
+        if data.get('acceptCall'):
+            # Handle call acceptance
+            await self.send_acceptance(data['callerID'], data['signalData'])
 
-    async def send_offer(self, data):
+    async def send_signal(self, signal_data):
+        # Forward signaling data to other clients in the room
         await self.channel_layer.group_send(
             self.room_group_name,
             {
-                "type": "offer_message",
-                "data": data,
-            },
-        )
-
-    async def send_answer(self, data):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "answer_message",
-                "data": data,
-            },
-        )
-
-    async def send_candidate(self, data):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "candidate_message",
-                "data": data,
-            },
-        )
-
-    async def offer_message(self, event):
-        data = event["data"]
-        await self.send(text_data=json.dumps(data))
-
-    async def answer_message(self, event):
-        data = event["data"]
-        await self.send(text_data=json.dumps(data))
-
-    async def candidate_message(self, event):
-        data = event["data"]
-        await self.send(text_data=json.dumps(data))
-
-
-class TextRoomConsumer(WebsocketConsumer):
-    def connect(self):
-        # gets 'room_name' and open websocket connection
-        self.room_name = self.scope['url_route']['kwargs']['room_name']
-        self.room_group_name = 'chat%s' % self.room_name
-
-        # Join room group
-        async_to_sync(self.channel_layer.group_add)(
-            self.room_group_name,
-            self.channel_name
-        )
-
-        self.accept()
-
-    def disconnect(self, close_code):
-        # Leave room group
-        async_to_sync(self.channel_layer.group_discard)(
-            self.room_group_name,
-            self.channel_name
-        )
-
-    # Receive message from WebSocket
-    def receive(self, text_data):
-        text_data_json = json.loads(text_data)
-        text = text_data_json['text']
-        sender = text_data_json['sender']
-
-        # Send message to room group
-        async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name,
-            {
-                'type': 'chat_message',
-                'message': text,
-                'sender': sender
+                'type': 'forward_signal',
+                'signal_data': signal_data,
+                'sender_channel_name': self.channel_name
             }
         )
 
-    
-    def chat_message(self, event):
-        # Receive message from room group
-        text = event['message']
-        sender = event['sender']
+    async def forward_signal(self, event):
+        # Forward signaling data to the recipient client
+        sender_channel_name = event['sender_channel_name']
+        signal_data = event['signal_data']
 
-        # broadcast message to all clients in WebSocket
-        self.send(text_data=json.dumps({
-            'text': text,
-            'sender': sender
+        await self.send(text_data=json.dumps({
+            'signalData': signal_data,
+            'userFrom': sender_channel_name == self.channel_name
+        }))
+
+    async def send_acceptance(self, caller_id, signal_data):
+        # Send call acceptance signal to the caller
+        await self.send(text_data=json.dumps({
+            'callAccepted': True,
+            'signalData': signal_data,
         }))
