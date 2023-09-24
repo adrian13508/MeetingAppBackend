@@ -29,7 +29,7 @@ class CallNamespace(socketio.AsyncNamespace):
         # users_in_this_room = [user for user in participants]
         # print(f'users: {users_in_this_room}')
         
-        await sio.emit('user-connected', sid, room=room_id, skip_sid=sid, namespace='/room')
+        await sio.emit('user-connected', peer_id, room=room_id, skip_sid=sid, namespace='/room')
         # return self.room_id
         
 
